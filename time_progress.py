@@ -1,8 +1,8 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QProgressBar, QLabel, QInputDialog
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QProgressBar, QLabel, QInputDialog, QSystemTrayIcon, QMenu, QAction
 from PyQt5.QtCore import QTimer, Qt, QRect
-from PyQt5.QtGui import QScreen
+from PyQt5.QtGui import QScreen, QIcon
 from datetime import datetime, timedelta
 
 class TimeProgressApp(QWidget):
@@ -12,52 +12,75 @@ class TimeProgressApp(QWidget):
         self.deadline_days = self.get_user_info("deadline.txt", "Days to next d3adl1n3:", QInputDialog.IntInput)
         self.deadline_date = datetime.now() + timedelta(days=self.deadline_days)
         self.initUI()
+        self.initTray()
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_progress_bars)
         self.timer.start(1000)
 
     def initUI(self):
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         screen: QScreen = QApplication.primaryScreen()
         screen_rect: QRect = screen.availableGeometry()
-        self.setGeometry(screen_rect.width() - 210, 30, 200, 300)  # Adjusted height
+        self.setGeometry(screen_rect.width() - 210, 30, 200, 300)
 
         self.setWindowTitle('Time Progress')
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
 
         self.setStyleSheet("background-color: black;")
-        
+
         self.progress_bars = {}
         self.days_left_labels = {}
-        
+
         for period in ['day', 'week', 'month', 'year', 'life', 'd3adl1n3']:
             bar = QProgressBar(self)
-            bar.setTextVisible(False)  # Hide default text
+            bar.setTextVisible(True) if period != 'd3adl1n3' else bar.setTextVisible(False)
             bar.setStyleSheet("""
                 QProgressBar {
                     border: 2px solid white;
                     background-color: black;
+                    text-align: center;
+                    color: white;
                 }
                 QProgressBar::chunk {
                     background-color: white;
                 }
             """)
-            
+
             label = QLabel(period.capitalize())
             label.setStyleSheet("color: white;")
-            
+
             days_left_label = QLabel()
             days_left_label.setStyleSheet("color: white;")
             
+
             self.layout.addWidget(label)
             self.layout.addWidget(bar)
             self.layout.addWidget(days_left_label)
-            
+
             self.progress_bars[period] = bar
             self.days_left_labels[period] = days_left_label
+
+    def initTray(self):
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(QIcon("in_time.ico"))  
+        show_action = QAction("Show", self)
+        quit_action = QAction("Exit", self)
+        hide_action = QAction("Hide", self)
+
+        show_action.triggered.connect(self.show)
+        hide_action.triggered.connect(self.hide)
+        quit_action.triggered.connect(app.quit)
+
+        tray_menu = QMenu()
+        tray_menu.addAction(show_action)
+        tray_menu.addAction(hide_action)
+        tray_menu.addAction(quit_action)
+
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.show()
 
     def get_user_info(self, file_name, label_text, input_mode):
         if os.path.exists(file_name):
@@ -117,14 +140,18 @@ class TimeProgressApp(QWidget):
         elif period == 'd3adl1n3':
             start = now
             end = self.deadline_date
-        progress = (now - start) / (end - start)
+
+        progress = (now - start).total_seconds() / (end - start).total_seconds()
         return progress
 
     def update_progress_bars(self):
         for period, bar in self.progress_bars.items():
             progress = self.calculate_progress(period)
             bar.setValue(int(progress * 100))
-            
+
+            if period != 'd3adl1n3':
+                bar.setFormat(f"{int(progress * 100)}%")
+
             if period == 'd3adl1n3':
                 days_left = max((self.deadline_date - datetime.now()).days, 0)
                 self.days_left_labels[period].setText(f"{days_left} days left")
